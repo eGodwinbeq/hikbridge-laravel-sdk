@@ -2,6 +2,7 @@
 
 namespace Nugsoft\HikBridge\Resources;
 
+use Nugsoft\HikBridge\Exceptions\HikBridgeException;
 use Nugsoft\HikBridge\HikBridgeClient;
 use Nugsoft\HikBridge\PendingOperation;
 
@@ -57,7 +58,11 @@ class DeviceResource
             );
         }
 
-        return $response->json() ?? [];
+        // Anything other than 202 goes through the same decoder get()/post()/etc. use, so a
+        // validation error (a malformed IP, a duplicate name, credentials the device rejects)
+        // raises its typed exception instead of being handed back as though it were a
+        // successfully registered device.
+        return $this->client->decode($response);
     }
 
     /**
@@ -89,6 +94,16 @@ class DeviceResource
     public function delete(int $deviceId): PendingOperation
     {
         $response = $this->client->deleteRaw("/v1/devices/{$deviceId}");
+
+        if ($response->status() !== 202) {
+            $this->client->decode($response);
+
+            throw new HikBridgeException(
+                "Expected an async (202) response deleting device {$deviceId}, got {$response->status()}.",
+                $response->status(),
+            );
+        }
+
         $body = $response->json();
 
         return new PendingOperation(

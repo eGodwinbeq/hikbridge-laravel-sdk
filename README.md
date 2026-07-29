@@ -230,6 +230,8 @@ HikBridge::devices()->update($deviceId, ['enrollment_mode' => 'isup']);
 `create()` returns a plain array (device registered synchronously, 201) unless you pass `isup`
 details inline, in which case the bridge also validates the ISUP registration before confirming
 and may respond 202 with a `PendingOperation` — see [Async Operations](#async-operations--pendingoperation).
+A validation error (a malformed IP, credentials the device rejects, etc.) still raises the usual
+typed exception rather than being returned as though it were a registered device.
 
 #### Update or remove a device
 
@@ -299,6 +301,11 @@ $person = HikBridge::persons()->create([
 // Returns array (HTTP 201) — person + device_sync_status
 echo $person['data']['device_sync_status'];
 ```
+
+A sync create() still raises the usual typed exception (e.g. `ValidationException` for a
+malformed `person_code`) rather than silently returning HikBridge's error body as if it were a
+person — the 202-vs-array branching only decides *how success* is represented, not whether a
+failure is.
 
 #### Update a person
 

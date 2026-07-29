@@ -2,6 +2,7 @@
 
 namespace Nugsoft\HikBridge\Resources;
 
+use Nugsoft\HikBridge\Exceptions\HikBridgeException;
 use Nugsoft\HikBridge\HikBridgeClient;
 use Nugsoft\HikBridge\PendingOperation;
 
@@ -38,7 +39,10 @@ class PersonResource
             );
         }
 
-        return $response->json() ?? [];
+        // Anything other than 202 goes through the same decoder get()/post()/etc. use, so a
+        // validation or server error raises its typed exception instead of being handed back as
+        // though it were a successful person payload.
+        return $this->client->decode($response);
     }
 
     public function update(int $personId, array $data): array
@@ -52,7 +56,21 @@ class PersonResource
     public function delete(int $personId): PendingOperation
     {
         $response = $this->client->deleteRaw("/v1/persons/{$personId}");
-        $body     = $response->json();
+
+        if ($response->status() !== 202) {
+            // Always expected to be async — anything else (404 if the person doesn't exist,
+            // 403, a server error) is a failure, not a differently-shaped success. Route it
+            // through the decoder so an error status raises its typed exception instead of
+            // being built into a bogus PendingOperation with a missing operation_id.
+            $this->client->decode($response);
+
+            throw new HikBridgeException(
+                "Expected an async (202) response deleting person {$personId}, got {$response->status()}.",
+                $response->status(),
+            );
+        }
+
+        $body = $response->json();
 
         return new PendingOperation(
             operationId: $body['operation_id'],

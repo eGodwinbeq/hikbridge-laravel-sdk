@@ -102,3 +102,26 @@ it('returns a PendingOperation on delete (async unenrollment fan-out)', function
         ->toBeInstanceOf(PendingOperation::class)
         ->and($result->operationId)->toBe('op_deldev123');
 });
+
+it('throws ValidationException on create when the sync (non-202) response is an error', function () {
+    // Regression: create() used to hand this back as a plain array (silently treated as a
+    // successfully registered device), instead of raising the same typed exception every other
+    // write method raises for a 422.
+    Http::fake(['*/v1/devices' => Http::response([
+        'message' => 'The ip field must be a valid IP address.',
+        'errors'  => ['ip' => ['The ip field must be a valid IP address.']],
+    ], 422)]);
+
+    expect(fn () => HikBridge::devices()->create([
+        'ip' => 'not-an-ip',
+        'username' => 'admin',
+        'password' => 'secret',
+    ]))->toThrow(Nugsoft\HikBridge\Exceptions\ValidationException::class, 'The ip field must be a valid IP address.');
+});
+
+it('throws NotFoundException on delete when the device does not exist', function () {
+    Http::fake(['*/v1/devices/35' => Http::response(['message' => 'Device not found.'], 404)]);
+
+    expect(fn () => HikBridge::devices()->delete(35))
+        ->toThrow(Nugsoft\HikBridge\Exceptions\NotFoundException::class, 'Device not found.');
+});

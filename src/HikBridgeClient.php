@@ -106,7 +106,13 @@ class HikBridgeClient
         return rtrim($this->config['base_url'], '/') . '/' . ltrim($path, '/');
     }
 
-    private function decode(Response $response): array
+    /**
+     * Decode a response already fetched via postRaw()/deleteRaw() — used by resources that
+     * branch on status code themselves (e.g. 202 → PendingOperation) before falling through to
+     * ordinary decoding for every other status, so a non-2xx/202 response still raises the same
+     * typed exception get()/post()/etc. would raise, instead of being returned as if it were data.
+     */
+    public function decode(Response $response): array
     {
         if ($response->successful()) {
             return $response->json() ?? [];

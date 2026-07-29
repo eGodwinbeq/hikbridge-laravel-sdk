@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Http;
+use Nugsoft\HikBridge\Exceptions\ValidationException;
 use Nugsoft\HikBridge\Facades\HikBridge;
 use Nugsoft\HikBridge\PendingOperation;
 
@@ -53,6 +54,22 @@ it('returns array when creating with device_id (sync 201)', function () {
         ->and($result['data']['id'])->toBe(10);
 });
 
+it('throws ValidationException on create when the sync (non-202) response is an error', function () {
+    // Regression: create() used to hand this back as a plain array (silently treated as a
+    // successful person with no 'id'), instead of raising the same typed exception every
+    // other write method raises for a 422.
+    Http::fake(['*/v1/persons' => Http::response([
+        'message' => 'The person code field must only contain letters and numbers.',
+        'errors'  => ['person_code' => ['The person code field must only contain letters and numbers.']],
+    ], 422)]);
+
+    expect(fn () => HikBridge::persons()->create([
+        'person_code' => 'EMP-001',
+        'first_name'  => 'Amina',
+        'device_id'   => 35,
+    ]))->toThrow(ValidationException::class, 'The person code field must only contain letters and numbers.');
+});
+
 it('sends a PUT request on update', function () {
     Http::fake(['*/v1/persons/57' => Http::response(['data' => ['id' => 57]], 200)]);
 
@@ -72,4 +89,11 @@ it('returns PendingOperation on delete (async fan-out)', function () {
     expect($result)
         ->toBeInstanceOf(PendingOperation::class)
         ->and($result->operationId)->toBe('op_del123');
+});
+
+it('throws NotFoundException on delete when the person does not exist', function () {
+    Http::fake(['*/v1/persons/57' => Http::response(['message' => 'Person not found.'], 404)]);
+
+    expect(fn () => HikBridge::persons()->delete(57))
+        ->toThrow(Nugsoft\HikBridge\Exceptions\NotFoundException::class, 'Person not found.');
 });
