@@ -141,6 +141,7 @@ Keys are scoped to a set of **abilities**. Attempting an endpoint the key is not
 | ------------------- | ---------------------------------------------- |
 | `business:read`     | `GET /v1/business`                             |
 | `devices:read`      | `GET /v1/devices`, `GET /v1/devices/:id`       |
+| `devices:write`     | Register, update, configure ISUP, and delete devices |
 | `persons:read`      | List, get, and poll operations                 |
 | `persons:write`     | Create, update, delete persons                 |
 | `biometrics:read`   | Biometric summaries, capture progress          |
@@ -180,6 +181,67 @@ $device = HikBridge::devices()->get(35);
 ```
 
 **Device object includes:** `id`, `name`, `integration_mode`, `capabilities` (e.g. `face_capture`, `fingerprint_capture`, `card_enrollment`).
+
+#### Register a device from scratch
+
+Nothing has to be provisioned on the HikBridge dashboard first — `create()` registers a new
+device directly against the business behind your API key. Give it its local (ISAPI) connection
+details: the device's IP, port, and the credentials of an operator account on the device itself.
+
+```php
+$device = HikBridge::devices()->create([
+    'name'     => 'Main Entrance',
+    'ip'       => '192.168.1.64',
+    'port'     => 80,
+    'username' => 'admin',
+    'password' => 'device-operator-password',
+]);
+
+$deviceId = $device['data']['id'];
+```
+
+A device registered this way is reachable **Direct (ISAPI)** — over the local network, e.g. from
+an on-site enrollment station. Requires the `devices:write` ability.
+
+#### Reach a device remotely (ISUP)
+
+A device behind NAT, or simply not on the same network as wherever your code runs (a web app,
+for instance), needs the ISUP tunnel instead of a direct LAN connection. Save the device first,
+then push its ISUP configuration:
+
+```php
+HikBridge::devices()->configureIsup($deviceId, [
+    'server_host'        => '161.97.104.204', // your ISUP server's IP/hostname
+    'registration_port'  => 7660,
+    'http_api_port'      => 8089,
+    'device_id'          => 'TEST01', // must match exactly what is registered in the ISUP service
+    'isup_key'           => 'isup_secret',
+]);
+```
+
+Once configured, set which transport enrollment calls use by default — a web app can only reach a
+device through **Remote (ISUP)**; **Direct (ISAPI)** is only reachable from an on-site station on
+the same network as the device:
+
+```php
+HikBridge::devices()->update($deviceId, ['enrollment_mode' => 'isup']);
+```
+
+`create()` returns a plain array (device registered synchronously, 201) unless you pass `isup`
+details inline, in which case the bridge also validates the ISUP registration before confirming
+and may respond 202 with a `PendingOperation` — see [Async Operations](#async-operations--pendingoperation).
+
+#### Update or remove a device
+
+```php
+// Rename it, or change its ISAPI credentials
+HikBridge::devices()->update($deviceId, ['name' => 'Front Gate']);
+
+// Remove it entirely — always async, since unenrolling a device can mean clearing
+// biometrics tied to it across every person synced against it.
+$op = HikBridge::devices()->delete($deviceId);
+$op->waitUntilDone();
+```
 
 ---
 

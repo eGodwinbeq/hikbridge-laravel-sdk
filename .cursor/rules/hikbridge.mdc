@@ -45,7 +45,21 @@ HikBridge::organization()->get(): array
 ```php
 HikBridge::devices()->list(array $params = []): array
 HikBridge::devices()->get(int $deviceId): array
+HikBridge::devices()->create(array $data): array|PendingOperation
+  // Registers a new device from scratch — no prior dashboard provisioning needed.
+  // Required: ip, username, password. Optional: name, port, enrollment_mode.
+  // Without inline `isup` details       → registered ISAPI-only    → 201 → array
+  // With inline `isup` details          → bridge validates ISUP too → may be 202 → PendingOperation
+HikBridge::devices()->update(int $deviceId, array $data): array
+  // Rename, change ISAPI credentials, or switch enrollment_mode ('direct' | 'isup').
+HikBridge::devices()->configureIsup(int $deviceId, array $data): array
+  // Push/replace ISUP tunnel config: server_host, registration_port, http_api_port, device_id, isup_key.
+  // Required so a device behind NAT (or reached from a web app rather than an on-site
+  // LAN station) can be enrolled at all — 'direct' ISAPI only works on the local network.
+HikBridge::devices()->delete(int $deviceId): PendingOperation     // always async
 ```
+
+Devices:write ability required for create/update/configureIsup/delete; devices:read covers list/get.
 
 ### Persons
 ```php
